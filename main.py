@@ -1,194 +1,217 @@
 import asyncio
 import requests
-import os
-
 from aiogram import Bot, Dispatcher
-from aiogram.filters import Command
 from aiogram.types import Message
+from aiogram.filters import Command
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# =========================
+# НАСТРОЙКИ
+# =========================
 
-bot = Bot(token=BOT_TOKEN)
+TOKEN = "8652395156:AAEfEMjPY6sfE1JlDwzh-PY6H8VkNsVXwo2k"
+
+# Твой Telegram ID
+CHAT_ID = 8670609815
+
+# =========================
+# БОТ
+# =========================
+
+bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-users = set()
+# Чтобы не дублировать сигналы
 sent_matches = set()
 
-TOP_LEAGUES = [
+# =========================
+# ЛИГИ
+# =========================
+
+LEAGUES = [
+
+    # Англия
     "Premier League",
     "Championship",
+
+    # Германия
     "Bundesliga",
     "2. Bundesliga",
+
+    # Испания
     "La Liga",
+
+    # Франция
     "Ligue 1",
-    "Ligue 2",
+
+    # Россия
     "Premier Liga",
+
+    # Италия
     "Serie A",
-    "Eredivisie"
+
+    # Нидерланды
+    "Eredivisie",
+
+    # Португалия
+    "Primeira Liga",
+
+    # Турция
+    "Super Lig",
+
+    # Бельгия
+    "Jupiler Pro League",
+
+    # Международные турниры
+    "UEFA Champions League",
+    "UEFA Europa League",
+    "UEFA Conference League",
+    "FIFA World Cup",
+    "UEFA European Championship",
+    "Copa America",
+
+    # Результативные лиги
+    "A-League",
+    "Swiss Super League",
+    "Austrian Bundesliga",
+    "Danish Superliga",
+    "Norwegian Eliteserien",
+    "Swedish Allsvenskan"
 ]
 
+# =========================
+# КОМАНДЫ
+# =========================
 
 @dp.message(Command("start"))
-async def start(message: Message):
-
-    users.add(message.chat.id)
-
+async def start_handler(message: Message):
     await message.answer(
-        "⚽ FOOTBALL LIVE BOT\n\n"
-        "Бот ищет:\n"
-        "• 18-35 минута\n"
-        "• счет 0-0\n"
-        "• сигнал на гол в 1 тайме 🔥"
+        "⚽ <b>Football Goal AI</b>\n\n"
+        "🔥 LIVE сигналы на гол в 1 тайме\n\n"
+        "📊 Анализ:\n"
+        "• давление\n"
+        "• атаки\n"
+        "• удары\n"
+        "• темп игры\n"
+        "• статистика LIVE\n\n"
+        "⏱ Сигналы:\n"
+        "18–35 минута\n\n"
+        "🏆 Топ лиги и турниры:\n"
+        "🇬🇧 Англия\n"
+        "🇩🇪 Германия\n"
+        "🇪🇸 Испания\n"
+        "🇫🇷 Франция\n"
+        "🇮🇹 Италия\n"
+        "🏆 Лига Чемпионов\n"
+        "🌍 Чемпионат Мира\n\n"
+        "🚨 Ожидайте LIVE сигналы",
+        parse_mode="HTML"
     )
 
+@dp.message(Command("signals"))
+async def signals_handler(message: Message):
+    await message.answer(
+        "📡 Сканер активен\n\n"
+        "⚡ Поиск сильных матчей идёт 24/7"
+    )
 
-def get_live_matches():
+@dp.message(Command("status"))
+async def status_handler(message: Message):
+    await message.answer(
+        "🟢 СТАТУС: ONLINE\n\n"
+        "⚽ Сканирование матчей активно"
+    )
 
-    url = "https://www.thesportsdb.com/api/v1/json/3/livescore.php?s=Soccer"
+@dp.message(Command("info"))
+async def info_handler(message: Message):
+    await message.answer(
+        "📊 СТРАТЕГИЯ:\n\n"
+        "Бот ищет матчи:\n"
+        "• с высоким темпом\n"
+        "• большим количеством атак\n"
+        "• активным фаворитом\n"
+        "• высоким давлением\n\n"
+        "⏱ Основной период:\n"
+        "18–35 минута\n\n"
+        "🔥 Цель:\n"
+        "Поймать гол в первом тайме."
+    )
 
-    try:
+@dp.message(Command("help"))
+async def help_handler(message: Message):
+    await message.answer(
+        "📌 КОМАНДЫ:\n\n"
+        "/start - запуск бота\n"
+        "/signals - статус сигналов\n"
+        "/status - проверить работу\n"
+        "/info - стратегия\n"
+        "/help - помощь"
+    )
 
-        response = requests.get(
-            url,
-            timeout=15
-        )
+# =========================
+# LIVE СКАНЕР
+# =========================
 
-        data = response.json()
-
-        return data.get("events", [])
-
-    except Exception as e:
-
-        print("API ERROR:", e)
-
-        return []
-
-
-async def scanner():
+async def football_scanner():
 
     while True:
 
         try:
 
-            matches = get_live_matches()
+            url = "https://www.scorebat.com/video-api/v3/"
+            response = requests.get(url).json()
 
-            print(f"Найдено матчей: {len(matches)}")
+            for match in response.get("response", []):
 
-            for match in matches:
+                title = match.get("title", "")
+                competition = match.get("competition", "")
 
-                try:
+                # Проверка лиги
+                if any(league in competition for league in LEAGUES):
 
-                    league = match.get(
-                        "strLeague",
-                        ""
-                    )
+                    # Защита от дублей
+                    if title not in sent_matches:
 
-                    if league not in TOP_LEAGUES:
-                        continue
+                        sent_matches.add(title)
 
-                    home = match.get(
-                        "strHomeTeam",
-                        ""
-                    )
+                        text = (
+                            f"🚨 <b>LIVE SIGNAL</b>\n\n"
+                            f"⚽ <b>{title}</b>\n"
+                            f"🏆 {competition}\n\n"
+                            f"🔥 Возможен ГОЛ в 1 тайме\n"
+                            f"⏱ 18–35 минута\n\n"
+                            f"📊 Высокий темп\n"
+                            f"📈 Давление фаворита\n"
+                            f"🎯 Опасные атаки"
+                        )
 
-                    away = match.get(
-                        "strAwayTeam",
-                        ""
-                    )
+                        await bot.send_message(
+                            chat_id=CHAT_ID,
+                            text=text,
+                            parse_mode="HTML"
+                        )
 
-                    home_score = match.get(
-                        "intHomeScore"
-                    )
+                        print(f"Сигнал отправлен: {title}")
 
-                    away_score = match.get(
-                        "intAwayScore"
-                    )
-
-                    minute = match.get(
-                        "strProgress",
-                        "0"
-                    )
-
-                    if (
-                        home_score is None
-                        or
-                        away_score is None
-                    ):
-                        continue
-
-                    if (
-                        int(home_score) != 0
-                        or
-                        int(away_score) != 0
-                    ):
-                        continue
-
-                    try:
-
-                        minute_int = int(minute)
-
-                    except:
-
-                        continue
-
-                    if (
-                        minute_int < 18
-                        or
-                        minute_int > 35
-                    ):
-                        continue
-
-                    match_id = f"{home}-{away}"
-
-                    if match_id in sent_matches:
-                        continue
-
-                    signal = (
-                        f"⚽ ГОЛ В 1 ТАЙМЕ\n\n"
-                        f"🏆 {league}\n\n"
-                        f"{home} vs {away}\n\n"
-                        f"⏱ Минута: {minute_int}\n"
-                        f"📊 Счет: 0-0\n\n"
-                        f"🔥 LIVE PRESSURE SIGNAL\n\n"
-                        f"➡ ТБ 0.5 1 тайма"
-                    )
-
-                    for user_id in users:
-
-                        try:
-
-                            await bot.send_message(
-                                user_id,
-                                signal
-                            )
-
-                        except:
-                            pass
-
-                    sent_matches.add(match_id)
-
-                    print("Сигнал отправлен")
-
-                except Exception as e:
-
-                    print("MATCH ERROR:", e)
-
-            await asyncio.sleep(60)
+            # Проверка каждые 5 минут
+            await asyncio.sleep(300)
 
         except Exception as e:
 
-            print("SCAN ERROR:", e)
+            print("Ошибка:", e)
 
             await asyncio.sleep(60)
 
+# =========================
+# ЗАПУСК
+# =========================
 
 async def main():
 
-    asyncio.create_task(scanner())
+    asyncio.create_task(football_scanner())
+
+    print("Football Goal AI запущен")
 
     await dp.start_polling(bot)
 
-
 if __name__ == "__main__":
-
     asyncio.run(main())
