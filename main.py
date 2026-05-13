@@ -1,209 +1,186 @@
 import asyncio
+import requests
 import os
-import aiohttp
 
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
-from aiogram.types import (
-    Message,
-    ReplyKeyboardMarkup,
-    KeyboardButton
-)
+from aiogram.types import Message
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-URL = "https://api.sofascore.com/api/v1/sport/ice-hockey/events/live"
+users = set()
+sent_matches = set()
 
-sent_games = set()
+TOP_LEAGUES = [
+    "Premier League",
+    "Championship",
+    "Bundesliga",
+    "2. Bundesliga",
+    "La Liga",
+    "Ligue 1",
+    "Ligue 2",
+    "Premier Liga",
+    "Serie A",
+    "Eredivisie"
+]
 
-# КНОПКИ
-
-keyboard = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="📊 Статус")],
-        [KeyboardButton(text="🏒 Live матчи")],
-        [KeyboardButton(text="ℹ️ Помощь")]
-    ],
-    resize_keyboard=True
-)
-
-
-# START
 
 @dp.message(Command("start"))
-async def start_cmd(message: Message):
+async def start(message: Message):
 
-    text = (
-        "🏒 HOCKEY SIGNAL BOT\n\n"
-        "Бот отслеживает live хоккейные матчи.\n\n"
-        "📡 Сигналы приходят автоматически."
-    )
+    users.add(message.chat.id)
 
     await message.answer(
-        text,
-        reply_markup=keyboard
+        "⚽ FOOTBALL LIVE BOT\n\n"
+        "Бот ищет:\n"
+        "• 18-35 минута\n"
+        "• счет 0-0\n"
+        "• сигнал на гол в 1 тайме 🔥"
     )
 
 
-# STATUS
+def get_live_matches():
 
-@dp.message(lambda message: message.text == "📊 Статус")
-async def status_handler(message: Message):
-
-    await message.answer(
-        "✅ Бот работает\n"
-        "📡 Сканер активен\n"
-        "⏱ Проверка каждые 30 секунд"
-    )
-
-
-# HELP
-
-@dp.message(lambda message: message.text == "ℹ️ Помощь")
-async def help_handler(message: Message):
-
-    await message.answer(
-        "ℹ️ Бот ищет хоккейные матчи:\n\n"
-        "• счет 1:0 или 0:1\n"
-        "• конец 1 периода\n"
-        "• live матчи SofaScore"
-    )
-
-
-# LIVE MATCHES
-
-@dp.message(lambda message: message.text == "🏒 Live матчи")
-async def games_handler(message: Message):
+    url = "https://www.thesportsdb.com/api/v1/json/3/livescore.php?s=Soccer"
 
     try:
 
-        async with aiohttp.ClientSession() as session:
+        response = requests.get(
+            url,
+            timeout=15
+        )
 
-            async with session.get(
-                URL,
-                headers={"User-Agent": "Mozilla/5.0"}
-            ) as response:
+        data = response.json()
 
-                data = await response.json()
-
-                events = data.get("events", [])
-
-                if not events:
-                    await message.answer("❌ Live матчей нет")
-                    return
-
-                text = "🏒 LIVE МАТЧИ\n\n"
-
-                for event in events[:10]:
-
-                    home = event["homeTeam"]["name"]
-                    away = event["awayTeam"]["name"]
-
-                    hs = event["homeScore"]["current"]
-                    aw = event["awayScore"]["current"]
-
-                    text += f"{home} {hs}:{aw} {away}\n"
-
-                await message.answer(text)
+        return data.get("events", [])
 
     except Exception as e:
 
-        await message.answer(f"Ошибка: {e}")
+        print("API ERROR:", e)
 
+        return []
 
-# СКАНЕР
 
 async def scanner():
 
-    await asyncio.sleep(5)
+    while True:
 
-    async with aiohttp.ClientSession() as session:
+        try:
 
-        while True:
+            matches = get_live_matches()
 
-            try:
+            print(f"Найдено матчей: {len(matches)}")
 
-                async with session.get(
-                    URL,
-                    headers={"User-Agent": "Mozilla/5.0"}
-                ) as response:
+            for match in matches:
 
-                    data = await response.json()
+                try:
 
-                    events = data.get("events", [])
+                    league = match.get(
+                        "strLeague",
+                        ""
+                    )
 
-                    print(f"Найдено матчей: {len(events)}")
+                    if league not in TOP_LEAGUES:
+                        continue
 
-                    for event in events:
+                    home = match.get(
+                        "strHomeTeam",
+                        ""
+                    )
+
+                    away = match.get(
+                        "strAwayTeam",
+                        ""
+                    )
+
+                    home_score = match.get(
+                        "intHomeScore"
+                    )
+
+                    away_score = match.get(
+                        "intAwayScore"
+                    )
+
+                    minute = match.get(
+                        "strProgress",
+                        "0"
+                    )
+
+                    if (
+                        home_score is None
+                        or
+                        away_score is None
+                    ):
+                        continue
+
+                    if (
+                        int(home_score) != 0
+                        or
+                        int(away_score) != 0
+                    ):
+                        continue
+
+                    try:
+
+                        minute_int = int(minute)
+
+                    except:
+
+                        continue
+
+                    if (
+                        minute_int < 18
+                        or
+                        minute_int > 35
+                    ):
+                        continue
+
+                    match_id = f"{home}-{away}"
+
+                    if match_id in sent_matches:
+                        continue
+
+                    signal = (
+                        f"⚽ ГОЛ В 1 ТАЙМЕ\n\n"
+                        f"🏆 {league}\n\n"
+                        f"{home} vs {away}\n\n"
+                        f"⏱ Минута: {minute_int}\n"
+                        f"📊 Счет: 0-0\n\n"
+                        f"🔥 LIVE PRESSURE SIGNAL\n\n"
+                        f"➡ ТБ 0.5 1 тайма"
+                    )
+
+                    for user_id in users:
 
                         try:
 
-                            game_id = str(event["id"])
-
-                            if game_id in sent_games:
-                                continue
-
-                            home = event["homeTeam"]["name"]
-                            away = event["awayTeam"]["name"]
-
-                            hs = event["homeScore"]["current"]
-                            aw = event["awayScore"]["current"]
-
-                            score = f"{hs}:{aw}"
-
-                            if score not in ["1:0", "0:1"]:
-                                continue
-
-                            status = event.get("status", {})
-
-                            period = status.get("period", 0)
-
-                            if period != 1:
-                                continue
-
-                            description = status.get(
-                                "description",
-                                ""
-                            )
-
-                            if (
-                                "Break" not in description
-                                and
-                                "Pause" not in description
-                            ):
-                                continue
-
-                            text = (
-                                f"🚨 HOCKEY SIGNAL\n\n"
-                                f"🏒 {home} vs {away}\n\n"
-                                f"🥅 Счет: {score}\n"
-                                f"⏱ Конец 1 периода\n\n"
-                                f"🔥 SIGNAL"
-                            )
-
                             await bot.send_message(
-                                chat_id=CHAT_ID,
-                                text=text
+                                user_id,
+                                signal
                             )
 
-                            print("Сигнал отправлен")
+                        except:
+                            pass
 
-                            sent_games.add(game_id)
+                    sent_matches.add(match_id)
 
-                        except Exception as e:
-                            print("Ошибка матча:", e)
+                    print("Сигнал отправлен")
 
-            except Exception as e:
-                print("Ошибка сканера:", e)
+                except Exception as e:
 
-            await asyncio.sleep(30)
+                    print("MATCH ERROR:", e)
 
+            await asyncio.sleep(60)
 
-# MAIN
+        except Exception as e:
+
+            print("SCAN ERROR:", e)
+
+            await asyncio.sleep(60)
+
 
 async def main():
 
@@ -213,4 +190,5 @@ async def main():
 
 
 if __name__ == "__main__":
+
     asyncio.run(main())
