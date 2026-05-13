@@ -4,7 +4,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import Message
 
-TOKEN = "8670022200:AAFuOfkTAiOk_zQDeooEgyrjifURCIb0gCY"
+TOKEN = "8670022200:AAFuOfkTAiOk_zQDeooEgyrjif-URCIb0gCY"
 
 CHAT_ID = "8670609815"
 
