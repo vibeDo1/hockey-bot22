@@ -8,7 +8,7 @@ from aiogram.filters import Command
 # НАСТРОЙКИ
 # =========================
 
-TOKEN = "8652395156:AAEfEMjPY6sfE1JlDwzh-PY6H8VkNsVXwo2k"
+TOKEN = "8670022200:AAFuOfkTAiOk_zQDeooEgyrjifURCIb0gCY"
 
 # Твой Telegram ID
 CHAT_ID = 8670609815
