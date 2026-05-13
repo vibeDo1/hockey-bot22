@@ -1,6 +1,6 @@
 import asyncio
 import os
-import requests
+import aiohttp
 from aiogram import Bot
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -14,83 +14,66 @@ sent = set()
 
 async def loop():
 
-    while True:
+    async with aiohttp.ClientSession() as session:
 
-        try:
+        while True:
 
-            response = requests.get(
-                URL,
-                headers={"User-Agent": "Mozilla/5.0"},
-                timeout=20
-            )
+            try:
 
-            data = response.json()
+                async with session.get(
+                    URL,
+                    headers={"User-Agent": "Mozilla/5.0"},
+                    timeout=20
+                ) as response:
 
-            for event in data.get("events", []):
+                    data = await response.json()
 
-                try:
+                for event in data.get("events", []):
 
-                    game_id = event["id"]
+                    try:
 
-                    if game_id in sent:
-                        continue
+                        game_id = event["id"]
 
-                    home = event["homeTeam"]["name"]
-                    away = event["awayTeam"]["name"]
+                        if game_id in sent:
+                            continue
 
-                    hs = event["homeScore"]["current"]
-                    aw = event["awayScore"]["current"]
+                        home = event["homeTeam"]["name"]
+                        away = event["awayTeam"]["name"]
 
-                    score = f"{hs}:{aw}"
+                        hs = event["homeScore"]["current"]
+                        aw = event["awayScore"]["current"]
 
-                    if score not in ["1:0", "0:1"]:
-                        continue
+                        score = f"{hs}:{aw}"
 
-                    period = event.get("period", 1)
+                        if score not in ["1:0", "0:1"]:
+                            continue
 
-                    if period != 1:
-                        continue
+                        period = event.get("period", 1)
 
-                    stats = event.get("statistics", {})
+                        if period != 1:
+                            continue
 
-                    shots_home = stats.get(
-                        "shotsOnGoal", {}
-                    ).get("home", 0)
-
-                    shots_away = stats.get(
-                        "shotsOnGoal", {}
-                    ).get("away", 0)
-
-                    total = shots_home + shots_away
-
-                    if total < 21:
-                        continue
-
-                    text = f"""
+                        text = f"""
 🚨 HOCKEY SIGNAL
 
 🏒 {home} vs {away}
 
 🥅 SCORE: {score}
-
-📊 SHOTS: {total}
-
-🔥 SIGNAL: YES
 """
 
-                    await bot.send_message(
-                        chat_id=CHAT_ID,
-                        text=text
-                    )
+                        await bot.send_message(
+                            chat_id=CHAT_ID,
+                            text=text
+                        )
 
-                    sent.add(game_id)
+                        sent.add(game_id)
 
-                except Exception:
-                    continue
+                    except Exception as e:
+                        print(e)
 
-        except Exception as e:
-            print(e)
+            except Exception as e:
+                print(e)
 
-        await asyncio.sleep(30)
+            await asyncio.sleep(30)
 
 asyncio.run(loop())
