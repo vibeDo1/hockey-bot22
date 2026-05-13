@@ -2,8 +2,9 @@ import asyncio
 import os
 import aiohttp
 
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
+from aiogram.types import Message
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -13,29 +14,20 @@ dp = Dispatcher()
 
 URL = "https://api.sofascore.com/api/v1/sport/ice-hockey/events/live"
 
-sent = set()
+sent_games = set()
 
 
-# ===== КОМАНДА /start =====
 @dp.message(Command("start"))
-async def start_handler(message: types.Message):
-
-    text = """
-🏒 Добро пожаловать в Hockey Signals Bot
-
-Бот автоматически ищет:
-• завершённый 1 период
-• счёт 1:0 или 0:1
-• минимум 21 бросок в створ
-
-После этого приходит сигнал 🚨
-"""
-
-    await message.answer(text)
+async def start_cmd(message: Message):
+    await message.answer(
+        "🏒 Хоккейный бот работает\n\n"
+        "Сигналы будут приходить автоматически."
+    )
 
 
-# ===== ОСНОВНОЙ ЦИКЛ =====
-async def hockey_loop():
+async def scanner():
+
+    await asyncio.sleep(5)
 
     async with aiohttp.ClientSession() as session:
 
@@ -45,92 +37,80 @@ async def hockey_loop():
 
                 async with session.get(
                     URL,
-                    headers={"User-Agent": "Mozilla/5.0"},
-                    timeout=20
+                    headers={"User-Agent": "Mozilla/5.0"}
                 ) as response:
 
                     data = await response.json()
 
-                for event in data.get("events", []):
+                    events = data.get("events", [])
 
-                    try:
+                    print(f"Найдено матчей: {len(events)}")
 
-                        game_id = event["id"]
+                    for event in events:
 
-                        if game_id in sent:
-                            continue
+                        try:
 
-                        home = event["homeTeam"]["name"]
-                        away = event["awayTeam"]["name"]
+                            game_id = str(event["id"])
 
-                        hs = event["homeScore"]["current"]
-                        aw = event["awayScore"]["current"]
+                            if game_id in sent_games:
+                                continue
 
-                        score = f"{hs}:{aw}"
+                            home = event["homeTeam"]["name"]
+                            away = event["awayTeam"]["name"]
 
-                        # Только счёт 1:0 или 0:1
-                        if score not in ["1:0", "0:1"]:
-                            continue
+                            home_score = event["homeScore"]["current"]
+                            away_score = event["awayScore"]["current"]
 
-                        # Проверка окончания 1 периода
-                        period = event.get("period", 1)
+                            score = f"{home_score}:{away_score}"
 
-                        # period == 2 означает:
-                        # первый период завершён
-                        if period != 2:
-                            continue
+                            # нужен счет 1:0 или 0:1
+                            if score not in ["1:0", "0:1"]:
+                                continue
 
-                        stats = event.get("statistics", {})
+                            # закончился 1 период
+                            status = event.get("status", {})
 
-                        shots_home = stats.get(
-                            "shotsOnGoal", {}
-                        ).get("home", 0)
+                            period = status.get("period", 0)
 
-                        shots_away = stats.get(
-                            "shotsOnGoal", {}
-                        ).get("away", 0)
+                            if period != 1:
+                                continue
 
-                        total = shots_home + shots_away
+                            description = status.get("description", "")
 
-                        # Минимум 21 бросок
-                        if total < 21:
-                            continue
+                            if "Break" not in description and "Pause" not in description:
+                                continue
 
-                        text = f"""
-🚨 HOCKEY SIGNAL
+                            text = (
+                                f"🚨 HOCKEY SIGNAL\n\n"
+                                f"🏒 {home} vs {away}\n\n"
+                                f"🥅 Счет: {score}\n"
+                                f"⏱ Конец 1 периода"
+                            )
 
-🏒 {home} vs {away}
+                            await bot.send_message(
+                                chat_id=CHAT_ID,
+                                text=text
+                            )
 
-🥅 SCORE AFTER 1ST PERIOD: {score}
+                            print("Сигнал отправлен")
 
-📊 SHOTS ON GOAL: {total}
+                            sent_games.add(game_id)
 
-🔥 SIGNAL FOUND
-"""
-
-                        await bot.send_message(
-                            chat_id=CHAT_ID,
-                            text=text
-                        )
-
-                        sent.add(game_id)
-
-                    except Exception as e:
-                        print("EVENT ERROR:", e)
+                        except Exception as e:
+                            print("Ошибка матча:", e)
 
             except Exception as e:
-                print("MAIN ERROR:", e)
+                print("Ошибка сканера:", e)
 
             await asyncio.sleep(30)
 
 
-# ===== ЗАПУСК =====
 async def main():
 
-    asyncio.create_task(hockey_loop())
+    asyncio.create_task(scanner())
 
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())     
+    asyncio.run(main())
