@@ -1,18 +1,41 @@
 import asyncio
 import os
 import aiohttp
-from aiogram import Bot
+
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
 
 URL = "https://api.sofascore.com/api/v1/sport/ice-hockey/events/live"
 
 sent = set()
 
-async def loop():
+
+# ===== КОМАНДА /start =====
+@dp.message(Command("start"))
+async def start_handler(message: types.Message):
+
+    text = """
+🏒 Добро пожаловать в Hockey Signals Bot
+
+Бот автоматически ищет:
+• счет 1:0 или 0:1
+• только 1 период
+• минимум 21 бросок
+
+После этого приходит сигнал 🚨
+"""
+
+    await message.answer(text)
+
+
+# ===== ОСНОВНОЙ ЦИКЛ =====
+async def hockey_loop():
 
     async with aiohttp.ClientSession() as session:
 
@@ -53,12 +76,31 @@ async def loop():
                         if period != 1:
                             continue
 
+                        stats = event.get("statistics", {})
+
+                        shots_home = stats.get(
+                            "shotsOnGoal", {}
+                        ).get("home", 0)
+
+                        shots_away = stats.get(
+                            "shotsOnGoal", {}
+                        ).get("away", 0)
+
+                        total = shots_home + shots_away
+
+                        if total < 21:
+                            continue
+
                         text = f"""
 🚨 HOCKEY SIGNAL
 
 🏒 {home} vs {away}
 
 🥅 SCORE: {score}
+
+📊 SHOTS: {total}
+
+🔥 SIGNAL: YES
 """
 
                         await bot.send_message(
@@ -69,11 +111,21 @@ async def loop():
                         sent.add(game_id)
 
                     except Exception as e:
-                        print(e)
+                        print("EVENT ERROR:", e)
 
             except Exception as e:
-                print(e)
+                print("MAIN ERROR:", e)
 
             await asyncio.sleep(30)
 
-asyncio.run(loop())
+
+# ===== ЗАПУСК =====
+async def main():
+
+    asyncio.create_task(hockey_loop())
+
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
