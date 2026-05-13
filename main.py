@@ -24,9 +24,9 @@ async def start_handler(message: types.Message):
 🏒 Добро пожаловать в Hockey Signals Bot
 
 Бот автоматически ищет:
-• счет 1:0 или 0:1
-• только 1 период
-• минимум 21 бросок
+• завершённый 1 период
+• счёт 1:0 или 0:1
+• минимум 21 бросок в створ
 
 После этого приходит сигнал 🚨
 """
@@ -68,12 +68,16 @@ async def hockey_loop():
 
                         score = f"{hs}:{aw}"
 
+                        # Только счёт 1:0 или 0:1
                         if score not in ["1:0", "0:1"]:
                             continue
 
+                        # Проверка окончания 1 периода
                         period = event.get("period", 1)
 
-                        if period != 1:
+                        # period == 2 означает:
+                        # первый период завершён
+                        if period != 2:
                             continue
 
                         stats = event.get("statistics", {})
@@ -88,6 +92,7 @@ async def hockey_loop():
 
                         total = shots_home + shots_away
 
+                        # Минимум 21 бросок
                         if total < 21:
                             continue
 
@@ -96,11 +101,11 @@ async def hockey_loop():
 
 🏒 {home} vs {away}
 
-🥅 SCORE: {score}
+🥅 SCORE AFTER 1ST PERIOD: {score}
 
-📊 SHOTS: {total}
+📊 SHOTS ON GOAL: {total}
 
-🔥 SIGNAL: YES
+🔥 SIGNAL FOUND
 """
 
                         await bot.send_message(
@@ -128,4 +133,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main())     
