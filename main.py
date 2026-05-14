@@ -1,31 +1,31 @@
 import asyncio
-import requests
+import aiohttp
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
-# ====================================
+# ======================================
 # НАСТРОЙКИ
-# ====================================
+# ======================================
 
-TOKEN = "8670022200:AAFuOfkTAiOk_zQDeooEgyrjifURCIb0gCY"
+BOT_TOKEN = "8670022200:AAFuOfkTAiOk_zQDeooEgyrjifURCIb0gCY"
 
-CHAT_ID = "8670609815"
+CHAT_ID = 8670609815
 
 API_KEY = "6tane6pbepb5wfto"
 
-bot = Bot(token=TOKEN)
+bot = Bot(token=BOT_TOKEN)
 
 dp = Dispatcher()
 
-# ====================================
+# ======================================
 # АНТИ-ДУБЛИ
-# ====================================
+# ======================================
 
 sent_matches = set()
 
-# ====================================
+# ======================================
 # ТОП ЛИГИ
-# ====================================
+# ======================================
 
 TOP_LEAGUES = [
     "Premier League",
@@ -39,9 +39,9 @@ TOP_LEAGUES = [
     "Premier Liga"
 ]
 
-# ====================================
+# ======================================
 # LIVE СКАНЕР
-# ====================================
+# ======================================
 
 async def scan_live_matches():
 
@@ -50,16 +50,27 @@ async def scan_live_matches():
         try:
 
             url = (
-                f"https://api.sstats.net/games?"
-                f"apikey={API_KEY}"
+                "https://api.sstats.net/football/games"
             )
 
-            response = requests.get(
-                url,
-                timeout=20
-            )
+            headers = {
+                "X-API-Key": API_KEY
+            }
 
-            data = response.json()
+            params = {
+                "status": "live"
+            }
+
+            async with aiohttp.ClientSession() as session:
+
+                async with session.get(
+                    url,
+                    headers=headers,
+                    params=params,
+                    timeout=20
+                ) as response:
+
+                    data = await response.json()
 
             matches = data.get("data", [])
 
@@ -69,82 +80,89 @@ async def scan_live_matches():
 
                 try:
 
-                    # ===================
-                    # LIVE СТАТУС
-                    # ===================
-
-                    status = str(
-                        match.get("status_name", "")
-                    ).lower()
-
-                    if "live" not in status:
-                        continue
-
-                    # ===================
+                    # ======================
                     # МИНУТА
-                    # ===================
+                    # ======================
 
                     minute = int(
-                        match.get("timer", {})
-                        .get("tm", 0)
+                        match.get("minute", 0)
                     )
 
-                    # Только 18-35
                     if minute < 18 or minute > 35:
                         continue
 
-                    # ===================
+                    # ======================
                     # ЛИГА
-                    # ===================
+                    # ======================
 
                     league = str(
-                        match.get("league_name", "")
+                        match.get("league", "")
                     )
 
-                    allowed = False
-
-                    for top in TOP_LEAGUES:
-
-                        if top.lower() in league.lower():
-
-                            allowed = True
-
-                    if not allowed:
+                    if not any(
+                        x.lower() in league.lower()
+                        for x in TOP_LEAGUES
+                    ):
                         continue
 
-                    # ===================
+                    # ======================
                     # КОМАНДЫ
-                    # ===================
+                    # ======================
 
                     home = match.get(
-                        "home_team",
+                        "home_name",
                         "Home"
                     )
 
                     away = match.get(
-                        "away_team",
+                        "away_name",
                         "Away"
                     )
 
-                    # ===================
+                    # ======================
                     # СЧЕТ
-                    # ===================
+                    # ======================
 
                     home_score = int(
-                        match.get("score_home", 0)
+                        match.get("home_score", 0)
                     )
 
                     away_score = int(
-                        match.get("score_away", 0)
+                        match.get("away_score", 0)
                     )
 
-                    # Максимум 1 гол
+                    # максимум 1 гол
                     if home_score + away_score > 1:
                         continue
 
-                    # ===================
+                    # ======================
+                    # ОПАСНЫЕ АТАКИ
+                    # ======================
+
+                    dangerous_home = int(
+                        match.get(
+                            "dangerous_attacks_home",
+                            0
+                        )
+                    )
+
+                    dangerous_away = int(
+                        match.get(
+                            "dangerous_attacks_away",
+                            0
+                        )
+                    )
+
+                    # минимум давление
+                    if (
+                        dangerous_home < 20
+                        and dangerous_away < 20
+                    ):
+                        continue
+
+                    # ======================
                     # ID
-                    # ===================
+                    # ======================
 
                     match_id = str(
                         match.get("id")
@@ -155,21 +173,23 @@ async def scan_live_matches():
 
                     sent_matches.add(match_id)
 
-                    # ===================
+                    # ======================
                     # СИГНАЛ
-                    # ===================
+                    # ======================
 
                     text = (
                         f"⚽ Football Goal AI\n\n"
-                        f"🔥 LIVE сигнал на гол\n\n"
+                        f"🔥 LIVE сигнал\n\n"
                         f"🏆 {league}\n\n"
                         f"⚔️ {home} vs {away}\n\n"
                         f"📊 Счет:\n"
                         f"{home_score} - {away_score}\n\n"
-                        f"⏱ Минута:\n"
-                        f"{minute}\n\n"
-                        f"📡 Реальный LIVE матч\n"
-                        f"🔥 Высокий темп игры"
+                        f"⏱ Минута: {minute}\n\n"
+                        f"📈 Опасные атаки:\n"
+                        f"{dangerous_home} - "
+                        f"{dangerous_away}\n\n"
+                        f"🔥 Возможен гол "
+                        f"в 1 тайме"
                     )
 
                     await bot.send_message(
@@ -196,32 +216,21 @@ async def scan_live_matches():
                 e
             )
 
-        # Проверка каждую минуту
         await asyncio.sleep(60)
 
-# ====================================
+# ======================================
 # КОМАНДЫ
-# ====================================
+# ======================================
 
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
 
     text = (
         "⚽ Football Goal AI\n\n"
-        "🔥 LIVE сигналы на гол\n"
-        "в 1 тайме\n\n"
+        "🔥 LIVE сигналы "
+        "на гол в 1 тайме\n\n"
         "⏱ Диапазон:\n"
         "18-35 минута\n\n"
-        "🏆 Лиги:\n"
-        "🇬🇧 Англия\n"
-        "🇩🇪 Германия\n"
-        "🇪🇸 Испания\n"
-        "🇫🇷 Франция\n"
-        "🇮🇹 Италия\n"
-        "🇷🇺 Россия\n"
-        "🌍 Лига Чемпионов\n"
-        "🌍 Лига Европы\n"
-        "🌍 Чемпионат Мира\n\n"
         "📡 Бот работает 24/7"
     )
 
@@ -231,8 +240,7 @@ async def start_cmd(message: types.Message):
 async def status_cmd(message: types.Message):
 
     await message.answer(
-        "✅ Бот активен\n"
-        "📡 LIVE сканирование включено"
+        "✅ LIVE сканирование активно"
     )
 
 @dp.message(Command("signals"))
@@ -246,14 +254,14 @@ async def signals_cmd(message: types.Message):
 async def info_cmd(message: types.Message):
 
     await message.answer(
-        "⚽ Football Goal AI\n\n"
+        "⚽ Football Goal AI\n"
         "📡 Анализ LIVE матчей\n"
         "🔥 Поиск голов в 1 тайме"
     )
 
-# ====================================
-# СТАРТ БОТА
-# ====================================
+# ======================================
+# ЗАПУСК
+# ======================================
 
 async def main():
 
