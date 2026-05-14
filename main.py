@@ -28,54 +28,47 @@ ALLOWED_LEAGUES = [
 async def scan_live_matches():
     while True:
         try:
-            url = "https://api.sofascore.com/api/v1/sport/football/events/live"
+            url = "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard"
 
-            response = requests.get(
-                url,
-                headers={
-                    "User-Agent": "Mozilla/5.0"
-                }
-            )
+            response = requests.get(url).json()
 
-            data = response.json()
+            events = response.get("events", [])
 
-            live_matches = data.get("events", [])
+            print(f"LIVE матчей: {len(events)}")
 
-            print(f"LIVE матчей: {len(live_matches)}")
-
-            for match in live_matches:
+            for event in events:
 
                 try:
-                    tournament = match["tournament"]["name"]
+                    competition = event["competitions"][0]
 
-                    if not any(
-                        league.lower() in tournament.lower()
-                        for league in ALLOWED_LEAGUES
-                    ):
+                    status = competition["status"]["type"]["description"]
+
+                    # Только LIVE
+                    if "Half" not in status and "minute" not in status.lower():
                         continue
 
-                    minute = match.get("time", {}).get("currentPeriodStartTimestamp")
+                    details = competition["status"]["displayClock"]
 
-                    home = match["homeTeam"]["name"]
-                    away = match["awayTeam"]["name"]
+                    try:
+                        minute = int(details.replace("'", ""))
+                    except:
+                        continue
 
-                    score_home = match["homeScore"]["current"]
-                    score_away = match["awayScore"]["current"]
+                    # Только 18-35 минута
+                    if minute < 18 or minute > 35:
+                        continue
 
-                    match_id = str(match["id"])
+                    home = competition["competitors"][0]["team"]["displayName"]
+                    away = competition["competitors"][1]["team"]["displayName"]
+
+                    home_score = competition["competitors"][0]["score"]
+                    away_score = competition["competitors"][1]["score"]
+
+                    league = event["league"]["name"]
+
+                    match_id = event["id"]
 
                     if match_id in sent_matches:
-                        continue
-
-                    status = match.get("status", {}).get("description", "")
-
-                    if "1st half" not in status.lower():
-                        continue
-
-                    # Берем только 18-35 минуту
-                    current_time = match.get("time", {}).get("normaltime", 0)
-
-                    if current_time < 18 or current_time > 35:
                         continue
 
                     text = f"""
@@ -83,25 +76,24 @@ async def scan_live_matches():
 
 🔥 LIVE сигнал на гол
 
-🏆 {tournament}
+🏆 {league}
 
 ⚔️ {home} vs {away}
 
 📊 Счет:
-{score_home} - {score_away}
+{home_score} - {away_score}
 
 ⏱ Минута:
-{current_time}
+{minute}
 
-📈 Высокий темп игры
-📡 LIVE матч
+📡 Реальный LIVE матч
 """
 
                     await bot.send_message(CHAT_ID, text)
 
                     sent_matches.add(match_id)
 
-                    print(f"Сигнал отправлен: {home} vs {away}")
+                    print(f"Отправлен сигнал: {home} vs {away}")
 
                 except Exception as e:
                     print("Ошибка матча:", e)
